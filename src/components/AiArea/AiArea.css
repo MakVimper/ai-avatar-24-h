@@ -1,0 +1,40 @@
+.ai-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: #1a1f28;
+}
+
+.empty-chat {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+}
+
+.empty-circle {
+  width: 450px;
+  height: 450px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.empty-circle:hover {
+  transform: scale(1.02);
+  box-shadow: 0 25px 70px rgba(102, 126, 234, 0.5);
+}
+
+.empty-circle canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}

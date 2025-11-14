@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+websockets
+pydantic
+python-multipart
+pydub
+edge_tts
+faster-whisper
+ollama
+psycopg2-binary

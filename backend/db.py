@@ -3,7 +3,7 @@ from psycopg2.extras import RealDictCursor
 import json
 from datetime import datetime
 
-DB_HOST = "localhost"
+DB_HOST = "host.docker.internal"
 DB_PORT = 5432
 DB_NAME = "ai_chat"
 DB_USER = "postgres"

@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: ai_db
+    restart: always
+    environment:
+      DB_HOST: host.docker.internal
+      DB_PORT: 5432
+      DB_NAME: ai_chat
+      DB_USER: postgres
+      DB_PASSWORD: 123
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - ainetwork
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+    - ollama_data:/root/.ollama
+    networks:
+      - ainetwork
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ai_chat
+      DB_USER: postgres
+      DB_PASSWORD: 123
+      OLLAMA_URL: "http://ollama:11434"
+      OLLAMA_HOST: "http://ollama:11434"
+    depends_on:
+      - db
+      - ollama
+    networks:
+      - ainetwork
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    networks:
+      - ainetwork
+
+volumes:
+  db_data:
+  ollama_data:
+
+networks:
+  ainetwork:
+    driver: bridge

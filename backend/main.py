@@ -11,8 +11,12 @@ import base64
 from pydub import AudioSegment
 import os
 import asyncio
+import logging
+import traceback
 
 app = FastAPI(title="AI Avatar Backend")
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,42 +35,75 @@ async def chat(request: Request):
     - return_text: вернуть текст AI
     - return_audio: вернуть аудио (StreamingResponse)
     """
-    data = await request.json()
-    user_message = data.get("message", "")
-    chat_id = data.get("chat_id", "")
-    return_text = data.get("return_text", True)
-    return_audio = data.get("return_audio", False)
-
-    if not user_message or not chat_id:
-        return JSONResponse({"error": "Нет текста или chat_id"}, status_code=400)
-
-    # Генерация ответа AI
     try:
-        response = ollama.chat(
-            model="mistral",
-            messages=[{"role": "user", "content": user_message}]
-        )
-        bot_reply = response["message"]["content"]
+        logger.info("=== CHAT REQUEST STARTED ===")
+        
+        data = await request.json()
+        user_message = data.get("message", "")
+        chat_id = data.get("chat_id", "")
+        return_text = data.get("return_text", True)
+        return_audio = data.get("return_audio", False)
+
+        logger.info(f"User message: {user_message}")
+        logger.info(f"Chat ID: {chat_id}")
+        logger.info(f"Return text: {return_text}, Return audio: {return_audio}")
+
+        if not user_message or not chat_id:
+            logger.error("Missing message or chat_id")
+            return JSONResponse({"error": "Нет текста или chat_id"}, status_code=400)
+
+        # Генерация ответа AI
+        logger.info("Calling Ollama API...")
+        try:
+            response = ollama.chat(
+                model="mistral",
+                messages=[{"role": "user", "content": user_message}]
+            )
+            logger.info(f"Ollama response: {response}")
+            bot_reply = response["message"]["content"]
+            logger.info(f"Bot reply: {bot_reply}")
+        except Exception as e:
+            logger.error(f"Ollama error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return JSONResponse({"error": f"Ошибка Ollama: {str(e)}"}, status_code=500)
+
+        # Сохраняем сообщение в базу
+        logger.info("Saving to database...")
+        try:
+            msg_id = save_message(chat_id, user_message, bot_reply)
+            logger.info(f"Message saved with ID: {msg_id}")
+        except Exception as e:
+            logger.error(f"Database error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return JSONResponse({"error": f"Ошибка БД: {str(e)}"}, status_code=500)
+
+        # Если нужно только текст
+        if return_text and not return_audio:
+            logger.info("Returning text only")
+            return {"bot_reply": bot_reply, "msg_id": msg_id}
+
+        if return_audio:
+            logger.info("Generating audio...")
+            try:
+                mp3_buffer = io.BytesIO()
+                communicate = edge_tts.Communicate(bot_reply, "ru-RU-DariyaNeural")
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        mp3_buffer.write(chunk["data"])
+                mp3_buffer.seek(0)
+
+                audio_base64 = base64.b64encode(mp3_buffer.read()).decode("ascii")
+                logger.info("Audio generated successfully")
+                return {"bot_reply": bot_reply, "audio_base64": audio_base64, "msg_id": msg_id}
+            except Exception as e:
+                logger.error(f"Audio generation error: {str(e)}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                return JSONResponse({"error": f"Ошибка генерации аудио: {str(e)}"}, status_code=500)
+    
     except Exception as e:
-        return JSONResponse({"error": f"Ошибка Ollama: {str(e)}"}, status_code=500)
-
-    # Сохраняем сообщение в базу
-    msg_id = save_message(chat_id, user_message, bot_reply)
-
-    # Если нужно только текст
-    if return_text and not return_audio:
-        return {"bot_reply": bot_reply, "msg_id": msg_id}
-
-    if return_audio:
-        mp3_buffer = io.BytesIO()
-        communicate = edge_tts.Communicate(bot_reply, "ru-RU-DariyaNeural")
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                mp3_buffer.write(chunk["data"])
-        mp3_buffer.seek(0)
-
-        audio_base64 = base64.b64encode(mp3_buffer.read()).decode("ascii")
-        return {"bot_reply": bot_reply, "audio_base64": audio_base64, "msg_id": msg_id}
+        logger.error(f"UNEXPECTED ERROR: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return JSONResponse({"error": f"Неожиданная ошибка: {str(e)}"}, status_code=500)
 
 @app.get("/audio/{msg_id}")
 def get_audio(msg_id: str):
@@ -182,55 +219,6 @@ async def lipsync_ws(websocket: WebSocket):
             await websocket.send_json({"error": str(e)})
         except:
             pass
-
-# @app.post("/chat-json")
-# async def chat_json(request: Request):
-#     data = await request.json()
-#     user_message = data.get("message", "")
-#     chat_id = data.get("chat_id", "")
-
-#     if not user_message or not chat_id:
-#         return {"error": "Нет текста или ID чата"}
-
-#     try:
-#         response = ollama.chat(
-#             model="mistral",
-#             messages=[{"role": "user", "content": user_message}]
-#         )
-#         bot_reply = response["message"]["content"]
-#     except Exception as e:
-#         return {"error": str(e)}
-
-#     save_message(chat_id, user_message, bot_reply)
-#     return {"bot_reply": bot_reply}
-
-# @app.post("/chat-audio")
-# async def chat_audio(request: Request):
-#     data = await request.json()
-#     user_message = data.get("message", "")
-#     chat_id = data.get("chat_id", "")
-
-#     if not user_message or not chat_id:
-#         return JSONResponse({"error": "Нет текста или chat_id"}, status_code=400)
-
-#     try:
-#         response = ollama.chat(
-#             model="mistral",
-#             messages=[{"role": "user", "content": user_message}]
-#         )
-#         bot_reply = response["message"]["content"]
-#     except Exception as e:
-#         return JSONResponse({"error": str(e)}, status_code=500)
-
-#     # Генерация TTS в памяти
-#     communicate = edge_tts.Communicate(bot_reply, "ru-RU-DariyaNeural")
-#     mp3_buffer = io.BytesIO()
-#     async for chunk in communicate.stream():
-#         if chunk["type"] == "audio":
-#             mp3_buffer.write(chunk["data"])
-#     mp3_buffer.seek(0)
-
-#     return StreamingResponse(mp3_buffer, media_type="audio/mpeg")
 
 @app.post("/stt")
 async def stt(file: UploadFile = File(...)):
